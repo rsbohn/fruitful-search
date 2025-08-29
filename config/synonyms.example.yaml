@@ -1,0 +1,9 @@
+# Example synonyms file. Generated version will overwrite config/synonyms.yaml
+# Structure:
+# synonyms:
+#   - canonical: e-ink
+#     terms:
+#       - epd
+#       - e paper
+#       - e ink
+synonyms: []

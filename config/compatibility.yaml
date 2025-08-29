@@ -1,0 +1,11 @@
+# Derived from device registry
+compatibility:
+  5300:
+    - 2890
+    - 4147
+  5600:
+    - 1651
+  5691:
+    - 4446
+    - 5925
+  5800:

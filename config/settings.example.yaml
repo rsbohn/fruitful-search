@@ -1,0 +1,28 @@
+# Copy to config/settings.yaml and customize. Do NOT commit config/settings.yaml.
+
+paths:
+  raw_catalog: data/raw/adafruit_catalog.json
+  processed_catalog: data/processed/catalog.parquet
+  indexes_dir: indexes/
+  image_cache: assets/cache/
+
+# Optional private external files (not committed)
+external:
+  device_registry_path: 
+  # Absolute path to your private device registry file (JSON/CSV/YAML). Kept outside this repo.
+
+search:
+  include_oos_default: false
+  candidates:
+    bm25_top_n: 200
+    semantic_top_m: 200
+  weights:
+    lexical: 0.35
+    semantic: 0.25
+    spec_fit: 0.25
+    stock: 0.10
+    recency: 0.03
+
+compliance:
+  rate_limit_per_min: 5
+  no_hotlinking: true

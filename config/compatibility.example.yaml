@@ -1,0 +1,7 @@
+# Example compatibility file. Generated version will overwrite config/compatibility.yaml
+# Structure:
+# compatibility:
+#   5691:
+#     - 4446   # E-Ink Feather Friend
+#     - 5925   # 1.54" Tri-Color E-Ink
+compatibility: {}

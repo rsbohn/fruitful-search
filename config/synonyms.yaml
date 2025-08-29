@@ -1,0 +1,22 @@
+# Derived from device registry
+synonyms:
+  - canonical: e-ink
+    terms:
+      - e ink
+      - e paper
+      - e-paper
+      - epd
+  - canonical: ili9341
+    terms:
+      - ili 9341
+  - canonical: reverse tft
+    terms:
+      - reverse display
+      - reverse-tft
+  - canonical: qualia
+  - canonical: feather
+    terms:
+      - feather board
+  - canonical: featherwing
+    terms:
+      - feather wing
