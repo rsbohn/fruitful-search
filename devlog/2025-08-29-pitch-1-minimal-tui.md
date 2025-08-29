@@ -1,6 +1,6 @@
 # Pitch 1 — Minimal TUI Skeleton (2025-08-29)
 
-Status: Agreed (Phase 1 — Alignment complete on 2025-08-29, RS)
+Status: Completed (Phase 3 — Wrap‑Up on 2025-08-29, RS)
 
 ## Summary
 Build a minimal, fast Textual-based Terminal UI that searches the local lexical (SQLite FTS5) index and displays results with essential metadata. This establishes the interactive baseline to iterate on UX, filters, and ranking.
@@ -34,3 +34,15 @@ Build a minimal, fast Textual-based Terminal UI that searches the local lexical 
 ## Notes
 - Code lives under `tui/` package with app, views, and a small DB access helper that reads from the `meta` and `docs` tables.
 - Keeps dependencies lean (only `textual`/`rich` via `[tui]` extra).
+
+## Outcomes
+- Implemented minimal TUI (search input, results list, details pane) wired to FTS5 via `core/db.py`.
+- Added CLI search fallback `scripts/search.py` (working well in your environment).
+- Improved focus handling and compatibility for Windows Terminal + WSL; fixed ListView selection bug.
+- Maintained offline/lean mode (no pandas/pyarrow/faiss required).
+
+## Follow‑ups
+- Investigate Textual input echo on Windows Terminal + WSL; consider pinning Textual version or adding a longer delayed focus.
+- Add in‑stock toggle and a short “why it matched” line in results.
+- Integrate synonyms/compatibility (from config) into query expansion.
+- Optional: small smoke tests for `core/db.search`.
