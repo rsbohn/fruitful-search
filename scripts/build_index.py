@@ -86,6 +86,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         conn.execute(
             "CREATE TABLE IF NOT EXISTS meta (pid INTEGER PRIMARY KEY, url TEXT, price REAL, stock INTEGER, date_added TEXT, discontinue_status TEXT)"
         )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS docs_map (rowid INTEGER PRIMARY KEY, pid INTEGER)"
+        )
         # Populate from raw JSON if parquet not present (lean mode)
         if use_raw_json:
             try:
@@ -100,8 +103,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 rows = rows_obj
             else:
                 rows = []
-            ins_docs = conn.execute
-            ins_meta = conn.execute
+            cur = conn.cursor()
             count = 0
             for r in rows:
                 pid = int(r.get("product_id", 0)) if str(r.get("product_id", "0")).isdigit() else None
@@ -115,10 +117,11 @@ def main(argv: Optional[list[str]] = None) -> int:
                     if v:
                         extra_parts.append(str(v))
                 extra = " ".join(extra_parts)
-                ins_docs(
+                cur.execute(
                     "INSERT INTO docs(name, model, mpn, manufacturer, extra) VALUES(?,?,?,?,?)",
                     (name, model, mpn, manuf, extra),
                 )
+                rowid = cur.lastrowid
                 if pid is not None:
                     url = r.get("product_url") or ""
                     try:
@@ -131,10 +134,15 @@ def main(argv: Optional[list[str]] = None) -> int:
                         stock = 0
                     date_added = r.get("date_added") or ""
                     disc = r.get("discontinue_status") or ""
-                    ins_meta(
+                    cur.execute(
                         "INSERT OR REPLACE INTO meta(pid, url, price, stock, date_added, discontinue_status) VALUES(?,?,?,?,?,?)",
                         (pid, url, price, stock, date_added, disc),
                     )
+                    if rowid is not None:
+                        cur.execute(
+                            "INSERT OR REPLACE INTO docs_map(rowid, pid) VALUES(?,?)",
+                            (rowid, pid),
+                        )
                 count += 1
             conn.commit()
     conn.close()
