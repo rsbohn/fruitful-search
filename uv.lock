@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.12'",
@@ -111,6 +111,9 @@ wheels = [
 name = "fruitful-search"
 version = "0.0.1"
 source = { editable = "." }
+dependencies = [
+    { name = "textual" },
+]
 
 [package.optional-dependencies]
 dev = [
@@ -143,6 +146,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "rich", marker = "extra == 'tui'", specifier = ">=13,<14" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
+    { name = "textual", specifier = ">=0.89.1" },
     { name = "textual", marker = "extra == 'tui'", specifier = ">=0.50,<1" },
 ]
 provides-extras = ["tui", "index", "ingest", "dev"]

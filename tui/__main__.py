@@ -1,4 +1,4 @@
-from .app import FruitfulApp
+from tui.app import FruitfulApp
 
 
 def main() -> None:
