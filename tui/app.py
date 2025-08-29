@@ -5,6 +5,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import List, Optional
 
+from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -61,7 +62,9 @@ class FruitfulApp(App):
         yield Header(show_clock=False)
         with Horizontal():
             with Vertical(id="left"):
-                self.search = Input(placeholder="Type to search… Press Enter to run", id="search")
+                self.search = Input(
+                    placeholder="Type to search… Press Enter to run", id="search"
+                )
                 yield self.search
                 self.results = ListView(id="results")
                 yield self.results
@@ -70,8 +73,35 @@ class FruitfulApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        # Initial hint
-        self.details.update("\nType a query and press Enter. Use '/' to focus the search box.")
+        # Initial hint and focus the search box so typing works immediately
+        self.details.update(
+            "\nType a query and press Enter. Use '/' to refocus the search box."
+        )
+        try:
+            # Prefer App-managed focus for reliability across terminals
+            self.set_focus(self.search)
+        except Exception:
+            self.search.focus()
+        # In some terminals (e.g., Windows Terminal + WSL), initial focus may be ignored.
+        # Schedule a follow-up focus shortly after mount.
+        self.set_timer(0.05, lambda: self.set_focus(self.search))
+
+    def on_key(self, event: events.Key) -> None:  # type: ignore[name-defined]
+        # Fallback: if user starts typing and search isn't focused, capture and redirect
+        if event.character and hasattr(self, "search") and self.search is not None:
+            if self.focused is not self.search:
+                self.set_focus(self.search)
+                # Insert the first typed character so it isn't lost
+                try:
+                    self.search.insert_text_at_cursor(event.character)
+                    event.stop()
+                    return
+                except Exception:
+                    pass
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:  # type: ignore[name-defined]
+        # Enter pressed while search input is focused
+        self.action_run_search()
 
     def action_focus_search(self) -> None:
         self.query = ""
@@ -87,7 +117,9 @@ class FruitfulApp(App):
         try:
             rows = coredb.search(q, limit=20)
         except FileNotFoundError as e:
-            self.details.update(f"\nIndex not found. {e}\nRun scripts/build_index.py first.")
+            self.details.update(
+                f"\nIndex not found. {e}\nRun scripts/build_index.py first."
+            )
             return
         except RuntimeError as e:
             self.details.update(f"\nFTS5 not available: {e}")
@@ -122,13 +154,13 @@ class FruitfulApp(App):
             return None
         if self.results.index is None or self.results.index < 0:
             return None
-        w = self.results.get_child_at_index(self.results.index)
-        if isinstance(w, ResultItem):
-            return w
+        # Textual versions differ; avoid relying on a helper and read children directly
+        children = [c for c in self.results.children if isinstance(c, ResultItem)]
+        if 0 <= self.results.index < len(children):
+            return children[self.results.index]
         return None
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:  # type: ignore[name-defined]
         item = self._current_item()
         if item:
             self.details.result = item.payload
-

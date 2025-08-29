@@ -29,8 +29,13 @@ def load_settings_path(key: str, default: str) -> Path:
 
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", dest="out_path", type=Path, default=None,
-                    help="Path to write stock snapshot (JSON)")
+    ap.add_argument(
+        "--out",
+        dest="out_path",
+        type=Path,
+        default=None,
+        help="Path to write stock snapshot (JSON)",
+    )
     args = ap.parse_args(argv)
 
     default_out = Path("data/processed/stock_snapshot.json")
@@ -42,4 +47,3 @@ def main(argv: Optional[list[str]] = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

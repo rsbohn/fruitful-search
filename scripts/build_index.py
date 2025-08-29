@@ -51,13 +51,21 @@ def ensure_fts5(conn: sqlite3.Connection) -> bool:
 
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--in", dest="in_path", type=Path,
-                    default=None, help="Path to processed parquet")
-    ap.add_argument("--out", dest="out_dir", type=Path,
-                    default=None, help="Indexes output dir")
+    ap.add_argument(
+        "--in",
+        dest="in_path",
+        type=Path,
+        default=None,
+        help="Path to processed parquet",
+    )
+    ap.add_argument(
+        "--out", dest="out_dir", type=Path, default=None, help="Indexes output dir"
+    )
     args = ap.parse_args(argv)
 
-    in_path = args.in_path or load_settings_path("processed_catalog", "data/processed/catalog.parquet")
+    in_path = args.in_path or load_settings_path(
+        "processed_catalog", "data/processed/catalog.parquet"
+    )
     raw_json_path = load_settings_path("raw_catalog", "data/raw/adafruit_catalog.json")
     out_dir = args.out_dir or load_settings_path("indexes_dir", "indexes/")
 
@@ -66,8 +74,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         if raw_json_path.exists():
             use_raw_json = True
         else:
-            print(f"Error: neither processed catalog at {in_path} nor raw JSON at {raw_json_path} found.", file=sys.stderr)
-            print("Run scripts/ingest_catalog.py or download raw JSON.", file=sys.stderr)
+            print(
+                f"Error: neither processed catalog at {in_path} nor raw JSON at {raw_json_path} found.",
+                file=sys.stderr,
+            )
+            print(
+                "Run scripts/ingest_catalog.py or download raw JSON.", file=sys.stderr
+            )
             return 2
 
     lexical_dir = out_dir / "lexical"
@@ -92,7 +105,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         # Populate from raw JSON if parquet not present (lean mode)
         if use_raw_json:
             try:
-                rows_obj = json.loads(Path(raw_json_path).read_text(encoding="utf-8", errors="replace"))
+                rows_obj = json.loads(
+                    Path(raw_json_path).read_text(encoding="utf-8", errors="replace")
+                )
             except Exception as e:
                 print(f"Failed to read raw JSON: {e}", file=sys.stderr)
                 conn.close()
@@ -106,7 +121,11 @@ def main(argv: Optional[list[str]] = None) -> int:
             cur = conn.cursor()
             count = 0
             for r in rows:
-                pid = int(r.get("product_id", 0)) if str(r.get("product_id", "0")).isdigit() else None
+                pid = (
+                    int(r.get("product_id", 0))
+                    if str(r.get("product_id", "0")).isdigit()
+                    else None
+                )
                 name = r.get("product_name", "")
                 model = r.get("product_model", "") or ""
                 mpn = r.get("product_mpn", "") or ""
@@ -156,7 +175,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         "fts5_available": has_fts5,
         "populated_from": "raw_json" if use_raw_json else "processed_parquet",
     }
-    (out_dir / "METADATA.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    (out_dir / "METADATA.json").write_text(
+        json.dumps(meta, indent=2) + "\n", encoding="utf-8"
+    )
 
     print(f"Indexes scaffolded under {out_dir}")
     if not has_fts5:

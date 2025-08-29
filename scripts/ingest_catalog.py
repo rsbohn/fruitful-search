@@ -38,14 +38,24 @@ def load_settings_path(key: str, default: str) -> Path:
 
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--in", dest="in_path", type=Path,
-                    default=None, help="Path to raw catalog JSON")
-    ap.add_argument("--out", dest="out_path", type=Path,
-                    default=None, help="Path to processed parquet output")
+    ap.add_argument(
+        "--in", dest="in_path", type=Path, default=None, help="Path to raw catalog JSON"
+    )
+    ap.add_argument(
+        "--out",
+        dest="out_path",
+        type=Path,
+        default=None,
+        help="Path to processed parquet output",
+    )
     args = ap.parse_args(argv)
 
-    in_path = args.in_path or load_settings_path("raw_catalog", "data/raw/adafruit_catalog.json")
-    out_path = args.out_path or load_settings_path("processed_catalog", "data/processed/catalog.parquet")
+    in_path = args.in_path or load_settings_path(
+        "raw_catalog", "data/raw/adafruit_catalog.json"
+    )
+    out_path = args.out_path or load_settings_path(
+        "processed_catalog", "data/processed/catalog.parquet"
+    )
 
     if not in_path.exists():
         print(f"Error: raw catalog not found at {in_path}", file=sys.stderr)
@@ -83,7 +93,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         if "products" in obj and isinstance(obj["products"], list):
             rows = obj["products"]
         else:
-            print("Unsupported JSON structure: expected top-level array or {products: [...]}.", file=sys.stderr)
+            print(
+                "Unsupported JSON structure: expected top-level array or {products: [...]}.",
+                file=sys.stderr,
+            )
             return 3
     elif isinstance(obj, list):
         rows = obj
@@ -105,4 +118,3 @@ def main(argv: Optional[list[str]] = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

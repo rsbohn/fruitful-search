@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+import re
 from pathlib import Path
 from typing import Iterable, List, Optional
 
@@ -46,7 +47,15 @@ def has_fts5(conn: sqlite3.Connection) -> bool:
         return False
 
 
-def search(query: str, limit: int = 20, db_path: Path = DEFAULT_DB_PATH) -> List[Result]:
+def _sanitize_for_fts(query: str) -> list[str]:
+    # Keep simple alphanumerics; drop punctuation that confuses MATCH
+    tokens = re.findall(r"[0-9A-Za-z]+", query)
+    return tokens
+
+
+def search(
+    query: str, limit: int = 20, db_path: Path = DEFAULT_DB_PATH
+) -> List[Result]:
     if not db_path.exists():
         raise FileNotFoundError(f"Lexical index not found at {db_path}")
     conn = open_db(db_path)
@@ -54,19 +63,39 @@ def search(query: str, limit: int = 20, db_path: Path = DEFAULT_DB_PATH) -> List
         if not has_fts5(conn):
             raise RuntimeError("SQLite FTS5 not available in this environment.")
         q = query.strip()
-        if not q:
+        tokens = _sanitize_for_fts(q)
+        if not tokens:
             return []
         # Basic BM25-ordered match across all columns
+        # Note: bm25() requires the actual FTS5 table name, not the alias
         sql = (
             "SELECT m.pid, d.name, m.price, m.stock, m.url, m.date_added, m.discontinue_status, "
-            "d.model, d.mpn, d.manufacturer, bm25(d) AS score "
+            "d.model, d.mpn, d.manufacturer, bm25(docs) AS score "
             "FROM docs d JOIN docs_map dm ON dm.rowid = d.rowid "
             "JOIN meta m ON m.pid = dm.pid "
-            "WHERE d MATCH ? ORDER BY score LIMIT ?"
+            "WHERE docs MATCH ? ORDER BY score LIMIT ?"
         )
-        rows = conn.execute(sql, (q, limit)).fetchall()
+        match_query = " ".join(tokens)  # space acts like AND in FTS5
+        try:
+            rows = conn.execute(sql, (match_query, limit)).fetchall()
+        except sqlite3.OperationalError:
+            # Fallback: quote each token and OR them, to avoid syntax issues
+            match_query = " OR ".join(f'"{t}"' for t in tokens)
+            rows = conn.execute(sql, (match_query, limit)).fetchall()
         results: List[Result] = []
-        for (pid, name, price, stock, url, date_added, disc, model, mpn, manufacturer, _score) in rows:
+        for (
+            pid,
+            name,
+            price,
+            stock,
+            url,
+            date_added,
+            disc,
+            model,
+            mpn,
+            manufacturer,
+            _score,
+        ) in rows:
             # Some feeds may use 'in stock' strings; keep as-is if not int
             stock_val: int | str
             try:
@@ -90,4 +119,3 @@ def search(query: str, limit: int = 20, db_path: Path = DEFAULT_DB_PATH) -> List
         return results
     finally:
         conn.close()
-

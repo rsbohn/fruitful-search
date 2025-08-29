@@ -155,7 +155,9 @@ def build_synonyms(devs: List[Device]) -> Dict[str, List[str]]:
     return {"synonyms": [{"canonical": c, "terms": t} for c, t in entries]}
 
 
-def build_seed_queries(devs: List[Device], compat: Dict[str, List[str]]) -> List[Dict[str, object]]:
+def build_seed_queries(
+    devs: List[Device], compat: Dict[str, List[str]]
+) -> List[Dict[str, object]]:
     """Create a few plausible queries tied to observed devices.
 
     Output items:
@@ -243,14 +245,24 @@ def dump_gold_yaml(seeds: List[Dict[str, object]]) -> List[str]:
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--registry", type=str, help="Path to device registry (Markdown)")
-    ap.add_argument("--out-config", type=str, default="config", help="Output config dir")
+    ap.add_argument(
+        "--out-config", type=str, default="config", help="Output config dir"
+    )
     ap.add_argument("--out-eval", type=str, default="eval", help="Output eval dir")
     args = ap.parse_args(argv)
 
-    reg_path = Path(args.registry) if args.registry else load_registry_path_from_settings()
+    reg_path = (
+        Path(args.registry) if args.registry else load_registry_path_from_settings()
+    )
     if not reg_path or not reg_path.exists():
-        print("Error: device registry path not provided or does not exist.", file=sys.stderr)
-        print("  Pass --registry /abs/path/to/device_registry.md or set config/settings.yaml -> external.device_registry_path", file=sys.stderr)
+        print(
+            "Error: device registry path not provided or does not exist.",
+            file=sys.stderr,
+        )
+        print(
+            "  Pass --registry /abs/path/to/device_registry.md or set config/settings.yaml -> external.device_registry_path",
+            file=sys.stderr,
+        )
         return 2
 
     text = read_text(reg_path)
@@ -277,4 +289,3 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
