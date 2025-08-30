@@ -1,8 +1,4 @@
-from tui.app import FruitfulApp
-
-
-def main() -> None:
-    FruitfulApp().run()
+from tui.main import main
 
 
 if __name__ == "__main__":
