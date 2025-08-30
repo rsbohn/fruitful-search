@@ -51,6 +51,16 @@ An assistant to help makers find the “missing piece” in the Adafruit ecosyst
 - Accessibility: high‑contrast theme and readable defaults.
 - Future surfaces: MCP service, Copilot chat mode, sub‑agent, and custom GPT chat app.
 
+### Console (Non‑TUI) Usage
+- One‑shot query: `uv run fruitful-console "feather i2c" --limit 10`
+- JSON output (one‑shot): `uv run fruitful-console --json "feather i2c"`
+- REPL: `uv run fruitful-console`
+  - Commands: `:open <pid>` opens product URL; `:help`; `:q` quits.
+- Notes: offline‑only; reads `indexes/lexical/index.sqlite` (FTS5). No changes to the TUI.
+
+Troubleshooting
+- Headless/WSL browser issues: if `:open` prints errors like "tcgetpgrp failed: Not a tty", use `--no-browser` or set `FRUITFUL_NO_BROWSER=1` to just print URLs, then copy them. On WSL, installing `wslview` enables opening URLs in your Windows browser.
+
 ## System Design
 - Architecture: offline‑first local search with two indexes — SQLite FTS5 (lexical) and FAISS (semantic) — consumed by a Textual TUI.
 - Components: ingestion → processed parquet → index builder → search core → TUI; background stock/price refresher.
@@ -94,6 +104,7 @@ An assistant to help makers find the “missing piece” in the Adafruit ecosyst
 - Tooling: ruff (lint), black (format), mypy (types), pytest (tests).
 - Layout: `core/`, `tui/`, `scripts/`, `config/`, `data/` (git‑ignored), `indexes/` (git‑ignored), `assets/cache/` (git‑ignored), `docs/devlog/`.
 - Scripts: `scripts/ingest_catalog.py`, `scripts/build_index.py`, `scripts/refresh_stock.py`; run TUI via `python -m tui`.
+  - Console: run CLI via `uv run fruitful-console`.
 - CI (optional): GitHub Actions for lint/type/test on 3.11/3.12.
 
 ## Repo Layout

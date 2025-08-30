@@ -12,6 +12,7 @@ dependencies = [
 
 [project.scripts]
 fruitful-search = "tui.__main__:main"
+fruitful-console = "core.cli:main"
 
 [project.optional-dependencies]
 tui = [
