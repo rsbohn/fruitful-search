@@ -22,7 +22,6 @@ import json
 import sqlite3
 import sys
 from datetime import datetime
-import json
 from pathlib import Path
 from typing import Optional
 
@@ -102,68 +101,96 @@ def main(argv: Optional[list[str]] = None) -> int:
         conn.execute(
             "CREATE TABLE IF NOT EXISTS docs_map (rowid INTEGER PRIMARY KEY, pid INTEGER)"
         )
-        # Populate from raw JSON if parquet not present (lean mode)
+        # Load product rows from parquet (preferred) or raw JSON fallback
+        rows = []
         if use_raw_json:
             try:
                 rows_obj = json.loads(
                     Path(raw_json_path).read_text(encoding="utf-8", errors="replace")
                 )
+                if isinstance(rows_obj, dict) and "products" in rows_obj:
+                    rows = rows_obj["products"]
+                elif isinstance(rows_obj, list):
+                    rows = rows_obj
             except Exception as e:
                 print(f"Failed to read raw JSON: {e}", file=sys.stderr)
-                conn.close()
-                return 3
-            if isinstance(rows_obj, dict) and "products" in rows_obj:
-                rows = rows_obj["products"]
-            elif isinstance(rows_obj, list):
-                rows = rows_obj
-            else:
-                rows = []
-            cur = conn.cursor()
-            count = 0
-            for r in rows:
-                pid = (
-                    int(r.get("product_id", 0))
-                    if str(r.get("product_id", "0")).isdigit()
-                    else None
+        else:
+            try:
+                import pandas as pd  # type: ignore
+
+                df = pd.read_parquet(in_path)
+                rows = df.to_dict(orient="records")
+            except Exception as e:
+                print(
+                    f"Failed to read parquet at {in_path}: {e}. Falling back to raw JSON if available.",
+                    file=sys.stderr,
                 )
-                name = r.get("product_name", "")
-                model = r.get("product_model", "") or ""
-                mpn = r.get("product_mpn", "") or ""
-                manuf = r.get("product_manufacturer", "") or ""
-                extra_parts = []
-                for k in ("product_master_category", "product_image_alt"):
-                    v = r.get(k)
-                    if v:
-                        extra_parts.append(str(v))
-                extra = " ".join(extra_parts)
-                cur.execute(
-                    "INSERT INTO docs(name, model, mpn, manufacturer, extra) VALUES(?,?,?,?,?)",
-                    (name, model, mpn, manuf, extra),
-                )
-                rowid = cur.lastrowid
-                if pid is not None:
-                    url = r.get("product_url") or ""
-                    try:
-                        price = float(r.get("product_price", 0) or 0)
-                    except Exception:
-                        price = 0.0
-                    try:
-                        stock = int(r.get("product_stock", 0) or 0)
-                    except Exception:
-                        stock = 0
-                    date_added = r.get("date_added") or ""
-                    disc = r.get("discontinue_status") or ""
-                    cur.execute(
-                        "INSERT OR REPLACE INTO meta(pid, url, price, stock, date_added, discontinue_status) VALUES(?,?,?,?,?,?)",
-                        (pid, url, price, stock, date_added, disc),
-                    )
-                    if rowid is not None:
-                        cur.execute(
-                            "INSERT OR REPLACE INTO docs_map(rowid, pid) VALUES(?,?)",
-                            (rowid, pid),
+                try:
+                    rows_obj = json.loads(
+                        Path(raw_json_path).read_text(
+                            encoding="utf-8", errors="replace"
                         )
-                count += 1
-            conn.commit()
+                    )
+                    if isinstance(rows_obj, dict) and "products" in rows_obj:
+                        rows = rows_obj["products"]
+                    elif isinstance(rows_obj, list):
+                        rows = rows_obj
+                    use_raw_json = True
+                except Exception as e_json:
+                    print(f"Failed to read raw JSON fallback: {e_json}", file=sys.stderr)
+                    rows = []
+
+        if not rows:
+            print("No rows loaded; index not populated.", file=sys.stderr)
+            conn.close()
+            return 3
+
+        cur = conn.cursor()
+        count = 0
+        for r in rows:
+            pid = (
+                int(r.get("product_id", 0))
+                if str(r.get("product_id", "0")).isdigit()
+                else None
+            )
+            name = r.get("product_name", "")
+            model = r.get("product_model", "") or ""
+            mpn = r.get("product_mpn", "") or ""
+            manuf = r.get("product_manufacturer", "") or ""
+            extra_parts = []
+            for k in ("product_master_category", "product_image_alt"):
+                v = r.get(k)
+                if v:
+                    extra_parts.append(str(v))
+            extra = " ".join(extra_parts)
+            cur.execute(
+                "INSERT INTO docs(name, model, mpn, manufacturer, extra) VALUES(?,?,?,?,?)",
+                (name, model, mpn, manuf, extra),
+            )
+            rowid = cur.lastrowid
+            if pid is not None:
+                url = r.get("product_url") or ""
+                try:
+                    price = float(r.get("product_price", 0) or 0)
+                except Exception:
+                    price = 0.0
+                try:
+                    stock = int(r.get("product_stock", 0) or 0)
+                except Exception:
+                    stock = r.get("product_stock", 0) or 0
+                date_added = r.get("date_added") or ""
+                disc = r.get("discontinue_status") or ""
+                cur.execute(
+                    "INSERT OR REPLACE INTO meta(pid, url, price, stock, date_added, discontinue_status) VALUES(?,?,?,?,?,?)",
+                    (pid, url, price, stock, date_added, disc),
+                )
+                if rowid is not None:
+                    cur.execute(
+                        "INSERT OR REPLACE INTO docs_map(rowid, pid) VALUES(?,?)",
+                        (rowid, pid),
+                    )
+            count += 1
+        conn.commit()
     conn.close()
 
     # Minimal semantic metadata placeholder

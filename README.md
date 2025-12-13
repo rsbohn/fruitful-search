@@ -118,6 +118,9 @@ Troubleshooting
 - Place the catalog JSON at `data/raw/adafruit_catalog.json`.
 - Create venv with uv: `uv venv && source .venv/bin/activate` (or `Scripts\activate` on Windows).
 - Install extras (optional): `uv pip install -e ".[dev,ingest,index,tui]"`.
+- Quick refresh (download → ingest → indexes → stock stub):  
+  `uv run python scripts/update_catalog_and_indexes.py`  
+  Flags: `--skip-download` to reuse the raw JSON; `--skip-refresh` to omit the stock stub.
 - Scripts:
   - `scripts/ingest_catalog.py` → validates raw JSON; if Pandas+PyArrow available, writes `data/processed/catalog.parquet`.
   - `scripts/build_index.py` → scaffolds `indexes/` (creates a placeholder SQLite FTS5 DB if available).
