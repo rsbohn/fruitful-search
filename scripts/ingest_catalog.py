@@ -105,6 +105,18 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 3
 
     df = pd.DataFrame(rows)
+
+    # Normalize fields that should be numeric but occasionally arrive as strings.
+    if "parent_pid" in df.columns:
+        parent_pid_series = pd.to_numeric(df["parent_pid"], errors="coerce")
+        df["parent_pid"] = parent_pid_series.astype("Int64")
+
+    if "discount_pricing" in df.columns:
+        df["discount_pricing"] = df["discount_pricing"].apply(
+            lambda value: json.dumps(value, separators=(",", ":"))
+            if isinstance(value, (dict, list))
+            else value
+        )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         df.to_parquet(out_path)
