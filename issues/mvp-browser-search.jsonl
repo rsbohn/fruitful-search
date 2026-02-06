@@ -1,0 +1,10 @@
+{"id": "mvp-001", "title": "MVP browser search: React UI + local lexical search", "status": "todo", "type": "feature", "priority": "high", "created": "2026-02-06"}
+{"id": "mvp-010", "title": "Set up React app shell and routing", "status": "done", "created": "2026-02-06", "type": "feature", "priority": "high", "updated": "2026-02-06"}
+{"id": "mvp-020", "title": "Define data schema and import catalog JSON", "status": "todo", "created": "2026-02-06", "type": "feature", "priority": "high", "depends_on": ["mvp-010"]}
+{"id": "mvp-030", "title": "Implement storage abstraction (OPFS/IndexedDB)", "status": "todo", "created": "2026-02-06", "type": "feature", "priority": "high", "depends_on": ["mvp-020"]}
+{"id": "mvp-040", "title": "Build lexical index worker", "status": "todo", "created": "2026-02-06", "type": "feature", "priority": "high", "depends_on": ["mvp-030"]}
+{"id": "mvp-050", "title": "Search query API + result shaping", "status": "todo", "created": "2026-02-06", "type": "feature", "priority": "high", "depends_on": ["mvp-040"]}
+{"id": "mvp-060", "title": "Results list UI with basic ranking display", "status": "todo", "created": "2026-02-06", "type": "feature", "priority": "med", "depends_on": ["mvp-010", "mvp-050"]}
+{"id": "mvp-070", "title": "Details view (product info + attribution links)", "status": "todo", "created": "2026-02-06", "type": "feature", "priority": "med", "depends_on": ["mvp-060"]}
+{"id": "mvp-080", "title": "Basic filters (in-stock, price range)", "status": "todo", "created": "2026-02-06", "type": "feature", "priority": "med", "depends_on": ["mvp-050", "mvp-060"]}
+{"id": "mvp-090", "title": "Dev scripts and README updates for web MVP", "status": "todo", "created": "2026-02-06", "type": "chore", "priority": "low", "depends_on": ["mvp-010"]}
