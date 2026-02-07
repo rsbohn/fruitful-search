@@ -129,6 +129,11 @@ cython_debug/
 .vscode/
 .idea/
 
+# Node.js
+node_modules/
+*.tsbuildinfo
+web/dist/
+
 # OS files
 .DS_Store
 Thumbs.db
