@@ -12,7 +12,11 @@ export const embedQuery = async (
   if (!text.trim()) {
     return { vector: [], dimension: 0 };
   }
-  const { pipeline } = await import("@xenova/transformers");
+  const { pipeline, env } = await import("@xenova/transformers");
+  env.allowRemoteModels = true;
+  env.allowLocalModels = false;
+  env.remoteModelPath = "https://huggingface.co/";
+  env.useBrowserCache = true;
   if (!pipelinePromise) {
     pipelinePromise = pipeline("feature-extraction", model);
   }

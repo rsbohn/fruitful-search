@@ -3,7 +3,7 @@ import { CatalogProduct, parseCatalogJson } from "./catalog";
 import { buildCategoryMap, parseCategoriesJson, CategoryEntry } from "./categories";
 import { parseEmbeddingsJson } from "./embeddings";
 import { createLexicalWorker } from "./lexicalWorkerClient";
-import { createSemanticWorker } from "./semanticWorkerClient";
+import { createSemanticWorker, SemanticIndexStats } from "./semanticWorkerClient";
 import { embedQuery } from "./semanticEmbed";
 import { runSearch } from "./search";
 import {
@@ -181,14 +181,20 @@ export default function App() {
   }, [workerStatus, catalog, indexStatus, buildIndex]);
 
   const buildSemanticIndex = React.useCallback(
-    async (items: { pid: number; embedding: number[] }[], model?: string) => {
+    async (
+      items: { pid: number; embedding: number[] }[],
+      model?: string
+    ): Promise<
+      | { ok: true; stats: SemanticIndexStats }
+      | { ok: false; message: string }
+    > => {
       if (items.length === 0) {
         setSemanticStatus("idle");
         setSemanticMessage("Import embeddings to enable semantic search.");
         setSemanticModel(null);
         setSemanticDimension(null);
         setSemanticCount(null);
-        return;
+        return { ok: false, message: "No embeddings provided." };
       }
       setSemanticStatus("building");
       setSemanticMessage("Building semantic index...");
@@ -201,11 +207,13 @@ export default function App() {
         setSemanticModel(model ?? null);
         setSemanticDimension(stats.dimension);
         setSemanticCount(stats.docsIndexed);
+        return { ok: true, stats };
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to build semantic index.";
         setSemanticStatus("error");
         setSemanticMessage(message);
+        return { ok: false, message };
       }
     },
     [semanticWorker]
@@ -423,10 +431,12 @@ export default function App() {
         const parsed = parseEmbeddingsJson(JSON.parse(text));
         const label =
           backend === "none" ? "local storage unavailable" : backend.toUpperCase();
-        setSemanticMessage(
-          `Embeddings loaded (${parsed.items.length} vectors) from ${label}.`
-        );
-        await buildSemanticIndex(parsed.items, parsed.model);
+        const result = await buildSemanticIndex(parsed.items, parsed.model);
+        if (result.ok) {
+          setSemanticMessage(
+            `Embeddings loaded (${parsed.items.length} vectors) from ${label}.`
+          );
+        }
       } catch (error) {
         if (!active) {
           return;
@@ -584,12 +594,14 @@ export default function App() {
       const text = await file.text();
       const parsed = parseEmbeddingsJson(JSON.parse(text));
       const backend = await saveEmbeddingsText(text);
-      await buildSemanticIndex(parsed.items, parsed.model);
-      setSemanticMessage(
-        backend === "none"
-          ? `Embeddings loaded (${parsed.items.length} vectors). Local storage unavailable.`
-          : `Embeddings loaded (${parsed.items.length} vectors). Saved to ${backend.toUpperCase()}.`
-      );
+      const result = await buildSemanticIndex(parsed.items, parsed.model);
+      if (result.ok) {
+        setSemanticMessage(
+          backend === "none"
+            ? `Embeddings loaded (${parsed.items.length} vectors). Local storage unavailable.`
+            : `Embeddings loaded (${parsed.items.length} vectors). Saved to ${backend.toUpperCase()}.`
+        );
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to parse embeddings JSON.";
