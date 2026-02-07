@@ -139,9 +139,7 @@ web/dist/
 Thumbs.db
 
 # Project data & indexes
-data/raw/
-data/tmp/
-data/cache/
+data/
 indexes/
 
 # Local asset cache

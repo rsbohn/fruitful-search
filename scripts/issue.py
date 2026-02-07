@@ -4,7 +4,7 @@
 Usage:
   python scripts/issue.py create --id ID --title "Title" [--epic EPIC]
   python scripts/issue.py close --id ID [--epic EPIC]
-  python scripts/issue.py list [--epic EPIC] [--status STATUS]
+  python scripts/issue.py list [--epic EPIC] [--status STATUS] [--all]
   python scripts/issue.py summary
   python scripts/issue.py validate [--epic EPIC]
 """
@@ -235,6 +235,28 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_list(args: argparse.Namespace) -> int:
+    if args.all:
+        paths = sorted(issues_dir().glob("*.jsonl"))
+        if not paths:
+            print("No issue files found.")
+            return 0
+        rows = []
+        for path in paths:
+            issue_file = read_issues(path)
+            for issue in issue_file.issues:
+                if args.status and issue.get("status") != args.status:
+                    continue
+                rows.append((path.stem, issue))
+        if not rows:
+            print("No issues found.")
+            return 0
+        for epic, issue in rows:
+            issue_id = issue.get("id", "")
+            status = issue.get("status", "")
+            title = issue.get("title", "")
+            print(f"{epic}\t{issue_id}\t[{status}] {title}")
+        return 0
+
     path = epic_path(args.epic)
     issue_file = read_issues(path)
     issues = issue_file.issues
@@ -326,6 +348,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_list = sub.add_parser("list", help="list issues")
     p_list.add_argument("--epic", default="default")
     p_list.add_argument("--status", choices=sorted(ALLOWED_STATUS))
+    p_list.add_argument("--all", action="store_true", help="list issues across all epics")
     p_list.set_defaults(func=cmd_list)
 
     p_summary = sub.add_parser("summary", help="summarize epics")

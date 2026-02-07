@@ -38,5 +38,6 @@ Optional fields:
 - Create: `python scripts/issue.py create --id search-001 --title "Add search bar UI" --epic search`
 - Close: `python scripts/issue.py close --id search-001 --epic search`
 - List: `python scripts/issue.py list --epic search`
+- List all epics: `python scripts/issue.py list --all`
 - Summary: `python scripts/issue.py summary`
 - Validate all: `python scripts/issue.py validate`

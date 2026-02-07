@@ -1,13 +1,16 @@
 import React from "react";
 import { CatalogProduct, parseCatalogJson } from "./catalog";
+import { buildCategoryMap, parseCategoriesJson, CategoryEntry } from "./categories";
 import { parseEmbeddingsJson } from "./embeddings";
 import { createLexicalWorker } from "./lexicalWorkerClient";
 import { createSemanticWorker } from "./semanticWorkerClient";
 import { embedQuery } from "./semanticEmbed";
 import { runSearch } from "./search";
 import {
+  loadCategoriesText,
   loadCatalogText,
   loadEmbeddingsText,
+  saveCategoriesText,
   saveCatalogText,
   saveEmbeddingsText,
 } from "./storage";
@@ -19,8 +22,18 @@ const placeholders = [
 ];
 
 export default function App() {
+  const [view, setView] = React.useState<"home" | "help">("home");
   const [placeholderIndex, setPlaceholderIndex] = React.useState(0);
   const [catalog, setCatalog] = React.useState<CatalogProduct[]>([]);
+  const [categoryMap, setCategoryMap] = React.useState<Map<number, CategoryEntry>>(
+    new Map()
+  );
+  const [categoryStatus, setCategoryStatus] = React.useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [categoryMessage, setCategoryMessage] = React.useState(
+    "Import the categories JSON to display category names."
+  );
   const [catalogStatus, setCatalogStatus] = React.useState<
     "empty" | "loading" | "ready" | "error"
   >("empty");
@@ -71,6 +84,7 @@ export default function App() {
   const [priceMax, setPriceMax] = React.useState<string>("");
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const embeddingsInputRef = React.useRef<HTMLInputElement | null>(null);
+  const categoriesInputRef = React.useRef<HTMLInputElement | null>(null);
   const [workerKey, setWorkerKey] = React.useState(0);
   const workerClient = React.useMemo(() => createLexicalWorker(), [workerKey]);
   const semanticWorker = React.useMemo(() => createSemanticWorker(), []);
@@ -431,12 +445,64 @@ export default function App() {
     };
   }, [buildSemanticIndex]);
 
+  React.useEffect(() => {
+    let active = true;
+    const loadCachedCategories = async () => {
+      setCategoryStatus("loading");
+      setCategoryMessage("Checking stored categories...");
+      try {
+        const { text, backend } = await loadCategoriesText();
+        if (!active) {
+          return;
+        }
+        if (!text) {
+          setCategoryStatus("idle");
+          setCategoryMessage("Import the categories JSON to display category names.");
+          setCategoryMap(new Map());
+          return;
+        }
+        const parsed = parseCategoriesJson(JSON.parse(text));
+        const map = buildCategoryMap(parsed);
+        const label =
+          backend === "none" ? "local storage unavailable" : backend.toUpperCase();
+        setCategoryMap(map);
+        setCategoryStatus("ready");
+        setCategoryMessage(
+          `Categories loaded (${map.size} entries) from ${label}.`
+        );
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to load categories from storage.";
+        setCategoryMap(new Map());
+        setCategoryStatus("error");
+        setCategoryMessage(message);
+      }
+    };
+    loadCachedCategories();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const handleImportClick = () => {
     fileInputRef.current?.click();
   };
 
   const handleImportEmbeddingsClick = () => {
     embeddingsInputRef.current?.click();
+  };
+
+  const handleImportCategoriesClick = () => {
+    categoriesInputRef.current?.click();
+  };
+
+  const handleHelpClick = () => {
+    setView("help");
   };
 
   const handleRefreshIndex = () => {
@@ -534,6 +600,38 @@ export default function App() {
     }
   };
 
+  const handleCategoriesChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    setCategoryStatus("loading");
+    setCategoryMessage(`Reading ${file.name}...`);
+    try {
+      const text = await file.text();
+      const parsed = parseCategoriesJson(JSON.parse(text));
+      const map = buildCategoryMap(parsed);
+      const backend = await saveCategoriesText(text);
+      setCategoryMap(map);
+      setCategoryStatus("ready");
+      setCategoryMessage(
+        backend === "none"
+          ? `Categories loaded (${map.size} entries). Local storage unavailable.`
+          : `Categories loaded (${map.size} entries). Saved to ${backend.toUpperCase()}.`
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to parse categories JSON.";
+      setCategoryMap(new Map());
+      setCategoryStatus("error");
+      setCategoryMessage(message);
+    } finally {
+      event.target.value = "";
+    }
+  };
+
   const statusLabel = (() => {
     switch (catalogStatus) {
       case "loading":
@@ -612,6 +710,10 @@ export default function App() {
     selectedResult && catalogById.has(selectedResult.pid)
       ? catalogById.get(selectedResult.pid)
       : null;
+  const selectedCategory =
+    selectedCatalog?.product_master_category != null
+      ? categoryMap.get(selectedCatalog.product_master_category) ?? null
+      : null;
 
   const escapeRegExp = (value: string) =>
     value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -662,6 +764,72 @@ export default function App() {
     (chip): chip is { label: string; onClear: () => void } => Boolean(chip)
   );
 
+  if (view === "help") {
+    return (
+      <div className="app">
+        <header className="topbar">
+          <div className="brand">
+            <span className="brand-dot" />
+            Fruitful Search
+          </div>
+          <nav className="topbar-actions">
+            <button className="ghost" onClick={() => setView("home")}>
+              Back to search
+            </button>
+          </nav>
+        </header>
+        <main className="layout">
+          <section className="help-page">
+            <div className="help-header">
+              <p className="eyebrow">Help</p>
+              <h2>Get set up fast</h2>
+              <p className="muted">
+                Fruitful Search runs locally in your browser and only uses the JSON
+                files you import.
+              </p>
+            </div>
+            <div className="help-grid">
+              <article className="help-card">
+                <h3>What is this</h3>
+                <p>
+                  A local-first explorer for the Adafruit product catalog. It builds
+                  an on-device index, keeps searches private, and explains why each
+                  result matches. After you import the catalog, it works offline.
+                </p>
+              </article>
+              <article className="help-card">
+                <h3>Getting the catalog</h3>
+                <p className="muted">
+                  API endpoint: <code>https://www.adafruit.com/api/products</code>
+                </p>
+                <ol className="help-list">
+                  <li>Download the JSON manually or run `scripts/download_adafruit_catalog.py`.</li>
+                  <li>Click “Import catalog” and select the downloaded file.</li>
+                  <li>Wait for the index to finish building before searching.</li>
+                </ol>
+                <p className="help-note">
+                  Compliance: do not hotlink images, respect ≤5 requests/min, and
+                  follow the project compliance checklist.
+                </p>
+              </article>
+              <article className="help-card">
+                <h3>Getting the categories</h3>
+                <p className="muted">
+                  API endpoint: <code>https://www.adafruit.com/api/categories</code>
+                </p>
+                <ol className="help-list">
+                  <li>Download the categories JSON from the endpoint.</li>
+                  <li>Click “Import categories” and select the file.</li>
+                  <li>Category names will appear in the Details panel.</li>
+                </ol>
+              </article>
+            </div>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -673,6 +841,9 @@ export default function App() {
           <button className="ghost" onClick={handleImportClick}>
             Import catalog
           </button>
+          <button className="ghost" onClick={handleImportCategoriesClick}>
+            Import categories
+          </button>
           <button className="ghost" onClick={handleImportEmbeddingsClick}>
             Import embeddings
           </button>
@@ -682,6 +853,9 @@ export default function App() {
             disabled={catalog.length === 0 || indexStatus === "building"}
           >
             Refresh index
+          </button>
+          <button className="ghost" onClick={handleHelpClick}>
+            Help
           </button>
         </nav>
       </header>
@@ -725,7 +899,89 @@ export default function App() {
         </section>
 
         <details className="hero-collapsible" open>
-          <summary className="hero-summary">Index & Filters</summary>
+          <summary className="hero-summary">
+            <span className="hero-summary-title">Index & Filters</span>
+            <span className="hero-summary-statuses">
+              <span className="hero-summary-item">
+                <span className={`status-dot ${statusTone}`} />
+                <span className={`status-text ${statusTone}`}>
+                  {catalogStatus === "ready"
+                    ? "Catalog ready"
+                    : catalogStatus === "loading"
+                    ? "Catalog loading"
+                    : catalogStatus === "error"
+                    ? "Catalog error"
+                    : "Catalog not indexed"}
+                </span>
+              </span>
+              <span className="hero-summary-item">
+                <span
+                  className={`status-dot ${
+                    semanticStatus === "ready"
+                      ? "ready"
+                      : semanticStatus === "error"
+                      ? "error"
+                      : ""
+                  }`}
+                />
+                <span
+                  className={`status-text ${
+                    semanticStatus === "ready"
+                      ? "ready"
+                      : semanticStatus === "error"
+                      ? "error"
+                      : ""
+                  }`}
+                >
+                  {semanticStatus === "ready"
+                    ? "Semantic ready"
+                    : semanticStatus === "building"
+                    ? "Semantic building"
+                    : semanticStatus === "error"
+                    ? "Semantic error"
+                    : "Semantic not indexed"}
+                </span>
+              </span>
+              <span className="hero-summary-item">
+                <span
+                  className={`status-dot ${
+                    categoryStatus === "ready"
+                      ? "ready"
+                      : categoryStatus === "error"
+                      ? "error"
+                      : ""
+                  }`}
+                />
+                <span
+                  className={`status-text ${
+                    categoryStatus === "ready"
+                      ? "ready"
+                      : categoryStatus === "error"
+                      ? "error"
+                      : ""
+                  }`}
+                >
+                  {categoryStatus === "ready"
+                    ? "Categories ready"
+                    : categoryStatus === "loading"
+                    ? "Categories loading"
+                    : categoryStatus === "error"
+                    ? "Categories error"
+                    : "Categories not loaded"}
+                </span>
+              </span>
+              <span className="hero-summary-item">
+                <span className={`worker-dot ${workerStatus}`} />
+                <span className="hero-summary-text">
+                  {workerStatus === "online"
+                    ? "Worker online"
+                    : workerStatus === "offline"
+                    ? "Worker offline"
+                    : "Worker checking"}
+                </span>
+              </span>
+            </span>
+          </summary>
           <section className="hero-split">
             <div className="hero-stack">
               <div className="hero-panel">
@@ -814,6 +1070,45 @@ export default function App() {
                     </button>
                     <button className="ghost" onClick={handleRefreshSemantic}>
                       Refresh index
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="hero-panel">
+                <div className="panel-header">
+                  <span>Categories</span>
+                  <span
+                    className={`status-dot ${
+                      categoryStatus === "ready"
+                        ? "ready"
+                        : categoryStatus === "error"
+                        ? "error"
+                        : ""
+                    }`}
+                  />
+                  <span
+                    className={`status-text ${
+                      categoryStatus === "ready"
+                        ? "ready"
+                        : categoryStatus === "error"
+                        ? "error"
+                        : ""
+                    }`}
+                  >
+                    {categoryStatus === "ready"
+                      ? "Ready"
+                      : categoryStatus === "loading"
+                      ? "Loading"
+                      : categoryStatus === "error"
+                      ? "Error"
+                      : "Not loaded"}
+                  </span>
+                </div>
+                <div className="panel-body">
+                  <p>{categoryMessage}</p>
+                  <div className="panel-actions">
+                    <button className="primary" onClick={handleImportCategoriesClick}>
+                      Import categories
                     </button>
                   </div>
                 </div>
@@ -1049,7 +1344,9 @@ export default function App() {
                     <div>
                       <div className="details-label">Category</div>
                       <div className="details-value">
-                        {selectedCatalog?.product_master_category ?? "—"}
+                        {selectedCategory
+                          ? selectedCategory.path
+                          : selectedCatalog?.product_master_category ?? "—"}
                       </div>
                     </div>
                   </div>
@@ -1087,6 +1384,7 @@ export default function App() {
             </div>
           </aside>
         </section>
+
       </main>
 
       <input
@@ -1101,6 +1399,13 @@ export default function App() {
         type="file"
         accept="application/json"
         onChange={handleEmbeddingsChange}
+        hidden
+      />
+      <input
+        ref={categoriesInputRef}
+        type="file"
+        accept="application/json"
+        onChange={handleCategoriesChange}
         hidden
       />
     </div>

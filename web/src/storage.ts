@@ -4,6 +4,7 @@ const DB_NAME = "fruitful-search";
 const STORE_NAME = "files";
 const CATALOG_FILE = "catalog.json";
 const EMBEDDINGS_FILE = "embeddings.json";
+const CATEGORIES_FILE = "categories.json";
 
 const hasOpfs = () =>
   typeof navigator !== "undefined" &&
@@ -125,6 +126,35 @@ export const saveEmbeddingsText = async (
   }
   if (hasIndexedDb()) {
     await writeToIndexedDb(EMBEDDINGS_FILE, text);
+    return "indexeddb";
+  }
+  return "none";
+};
+
+export const loadCategoriesText = async (): Promise<{
+  text: string | null;
+  backend: StorageBackend;
+}> => {
+  if (hasOpfs()) {
+    const text = await readFromOpfs(CATEGORIES_FILE);
+    return { text, backend: "opfs" };
+  }
+  if (hasIndexedDb()) {
+    const text = await readFromIndexedDb(CATEGORIES_FILE);
+    return { text, backend: "indexeddb" };
+  }
+  return { text: null, backend: "none" };
+};
+
+export const saveCategoriesText = async (
+  text: string
+): Promise<StorageBackend> => {
+  if (hasOpfs()) {
+    await writeToOpfs(CATEGORIES_FILE, text);
+    return "opfs";
+  }
+  if (hasIndexedDb()) {
+    await writeToIndexedDb(CATEGORIES_FILE, text);
     return "indexeddb";
   }
   return "none";
