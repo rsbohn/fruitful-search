@@ -25,7 +25,8 @@ const buildCatalogMap = (catalog: CatalogProduct[]) => {
 export const runSearch = (
   rawQuery: string,
   matches: { pid: number; score: number }[],
-  catalog: CatalogProduct[]
+  catalog: CatalogProduct[],
+  mode: "lexical" | "semantic" | "hybrid" = "lexical"
 ): SearchResult[] => {
   const query = normalizeQuery(rawQuery);
   const tokens = query.split(/\s+/).filter(Boolean);
@@ -42,7 +43,10 @@ export const runSearch = (
       const searchText = `${name} ${manufacturer ?? ""} ${
         item.product_model ?? ""
       } ${item.product_mpn ?? ""}`.toLowerCase();
-      const hitTokens = tokens.filter((token) => searchText.includes(token));
+      const hitTokens =
+        mode === "semantic"
+          ? []
+          : tokens.filter((token) => searchText.includes(token));
       return {
         pid: match.pid,
         score: match.score,
@@ -52,7 +56,13 @@ export const runSearch = (
         stock: item.product_stock ?? null,
         url: item.product_url,
         why:
-          hitTokens.length > 0
+          mode === "semantic"
+            ? "Semantic similarity match."
+            : mode === "hybrid"
+            ? hitTokens.length > 0
+              ? "Hybrid match: keywords + semantic similarity."
+              : "Hybrid semantic match."
+            : hitTokens.length > 0
             ? `Matched ${hitTokens.slice(0, 3).join(", ")}.`
             : "Matched catalog text.",
         matchedTokens: hitTokens,

@@ -1,8 +1,16 @@
 import React from "react";
 import { CatalogProduct, parseCatalogJson } from "./catalog";
+import { parseEmbeddingsJson } from "./embeddings";
 import { createLexicalWorker } from "./lexicalWorkerClient";
+import { createSemanticWorker } from "./semanticWorkerClient";
+import { embedQuery } from "./semanticEmbed";
 import { runSearch } from "./search";
-import { loadCatalogText, saveCatalogText } from "./storage";
+import {
+  loadCatalogText,
+  loadEmbeddingsText,
+  saveCatalogText,
+  saveEmbeddingsText,
+} from "./storage";
 
 const placeholders = [
   "Search 'Feather I2C', 'USB-C PD 12V', '8-channel ADC'",
@@ -25,7 +33,32 @@ export default function App() {
   const [indexMessage, setIndexMessage] = React.useState(
     "Import a catalog to build the lexical index."
   );
+  const [indexProgress, setIndexProgress] = React.useState<{
+    processed: number;
+    total: number;
+  } | null>(null);
+  const [workerStatus, setWorkerStatus] = React.useState<
+    "checking" | "online" | "offline"
+  >("checking");
+  const autoRestartedRef = React.useRef(false);
+  const [semanticStatus, setSemanticStatus] = React.useState<
+    "idle" | "building" | "ready" | "error"
+  >("idle");
+  const [semanticMessage, setSemanticMessage] = React.useState(
+    "Import embeddings to enable semantic search."
+  );
+  const [semanticModel, setSemanticModel] = React.useState<string | null>(null);
+  const [semanticDimension, setSemanticDimension] = React.useState<number | null>(
+    null
+  );
+  const [semanticCount, setSemanticCount] = React.useState<number | null>(null);
   const [query, setQuery] = React.useState("");
+  const [searchMode, setSearchMode] = React.useState<
+    "lexical" | "semantic" | "hybrid"
+  >("lexical");
+  const [resultMode, setResultMode] = React.useState<
+    "lexical" | "semantic" | "hybrid"
+  >("lexical");
   const [searchResults, setSearchResults] = React.useState<
     ReturnType<typeof runSearch>
   >([]);
@@ -37,7 +70,10 @@ export default function App() {
   const [priceMin, setPriceMin] = React.useState<string>("");
   const [priceMax, setPriceMax] = React.useState<string>("");
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
-  const workerClient = React.useMemo(() => createLexicalWorker(), []);
+  const embeddingsInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [workerKey, setWorkerKey] = React.useState(0);
+  const workerClient = React.useMemo(() => createLexicalWorker(), [workerKey]);
+  const semanticWorker = React.useMemo(() => createSemanticWorker(), []);
 
   React.useEffect(() => {
     const timer = window.setInterval(() => {
@@ -50,31 +86,115 @@ export default function App() {
     return () => workerClient.terminate();
   }, [workerClient]);
 
+  React.useEffect(() => {
+    let active = true;
+    const check = async () => {
+      try {
+        await workerClient.ping();
+        if (active) {
+          setWorkerStatus("online");
+        }
+      } catch {
+        if (active) {
+          if (!autoRestartedRef.current) {
+            autoRestartedRef.current = true;
+            setWorkerStatus("checking");
+            setWorkerKey((prev) => prev + 1);
+          } else {
+            setWorkerStatus("offline");
+          }
+        }
+      }
+    };
+    void check();
+    const timer = window.setInterval(check, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [workerClient]);
+
+  React.useEffect(() => {
+    return () => semanticWorker.terminate();
+  }, [semanticWorker]);
+
   const buildIndex = React.useCallback(
     async (items: CatalogProduct[]) => {
       if (items.length === 0) {
         setIndexStatus("idle");
         setIndexMessage("Import a catalog to build the lexical index.");
+        setIndexProgress(null);
         return;
       }
       setIndexStatus("building");
       setIndexMessage("Building lexical index...");
+      setIndexProgress({ processed: 0, total: items.length });
       try {
-        const stats = await workerClient.buildIndex(items);
+        const stats = await workerClient.buildIndex(items, (processed, total) => {
+          const pct =
+            total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+          setIndexMessage(
+            `Building lexical index... ${pct}% (${processed}/${total})`
+          );
+          setIndexProgress({ processed, total });
+        });
         setIndexStatus("ready");
         setIndexMessage(
           `Index ready (${stats.docsIndexed} docs, ${stats.uniqueTokens} tokens) in ${Math.round(
             stats.buildMs
           )}ms.`
         );
+        setIndexProgress(null);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to build lexical index.";
         setIndexStatus("error");
         setIndexMessage(message);
+        setIndexProgress(null);
       }
     },
     [workerClient]
+  );
+
+  React.useEffect(() => {
+    if (
+      workerStatus === "online" &&
+      catalog.length > 0 &&
+      (indexStatus === "idle" || indexStatus === "error")
+    ) {
+      void buildIndex(catalog);
+    }
+  }, [workerStatus, catalog, indexStatus, buildIndex]);
+
+  const buildSemanticIndex = React.useCallback(
+    async (items: { pid: number; embedding: number[] }[], model?: string) => {
+      if (items.length === 0) {
+        setSemanticStatus("idle");
+        setSemanticMessage("Import embeddings to enable semantic search.");
+        setSemanticModel(null);
+        setSemanticDimension(null);
+        setSemanticCount(null);
+        return;
+      }
+      setSemanticStatus("building");
+      setSemanticMessage("Building semantic index...");
+      try {
+        const stats = await semanticWorker.buildIndex(items);
+        setSemanticStatus("ready");
+        setSemanticMessage(
+          `Semantic index ready (${stats.docsIndexed} vectors, ${stats.dimension}d).`
+        );
+        setSemanticModel(model ?? null);
+        setSemanticDimension(stats.dimension);
+        setSemanticCount(stats.docsIndexed);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to build semantic index.";
+        setSemanticStatus("error");
+        setSemanticMessage(message);
+      }
+    },
+    [semanticWorker]
   );
 
   const handleSearch = React.useCallback(
@@ -90,11 +210,116 @@ export default function App() {
         setSearchMessage("Import a catalog before searching.");
         return;
       }
+      if (searchMode !== "lexical" && semanticStatus !== "ready") {
+        setSearchResults([]);
+        setSearchMessage("Import embeddings to enable semantic search.");
+        return;
+      }
       setSearchMessage("Searching...");
       try {
+        if (searchMode === "semantic") {
+          if (!semanticModel || !semanticDimension) {
+            setSearchResults([]);
+            setSearchMessage("Semantic model metadata missing. Re-import embeddings.");
+            return;
+          }
+          const embedded = await embedQuery(trimmed, semanticModel);
+          if (embedded.dimension !== semanticDimension) {
+            throw new Error(
+              `Query embedding dimension ${embedded.dimension} does not match index dimension ${semanticDimension}.`
+            );
+          }
+          const matches = await semanticWorker.query(embedded.vector, 24);
+          const shaped = runSearch(trimmed, matches, catalog, "semantic");
+          setSearchResults(shaped);
+          setResultMode("semantic");
+          setSearchMessage(
+            shaped.length > 0
+              ? `Showing ${shaped.length} semantic matches.`
+              : "No matches yet. Try another query."
+          );
+          return;
+        }
+        if (searchMode === "hybrid") {
+          if (!semanticModel || !semanticDimension) {
+            setSearchResults([]);
+            setSearchMessage("Semantic model metadata missing. Re-import embeddings.");
+            return;
+          }
+          const [lexicalMatches, embedded] = await Promise.all([
+            workerClient.query(trimmed, 48),
+            embedQuery(trimmed, semanticModel),
+          ]);
+          if (embedded.dimension !== semanticDimension) {
+            throw new Error(
+              `Query embedding dimension ${embedded.dimension} does not match index dimension ${semanticDimension}.`
+            );
+          }
+          const semanticMatches = await semanticWorker.query(embedded.vector, 48);
+          const maxLex = lexicalMatches.reduce(
+            (acc, item) => Math.max(acc, item.score),
+            0
+          );
+          const lexicalMap = new Map<number, number>();
+          for (const item of lexicalMatches) {
+            lexicalMap.set(item.pid, maxLex > 0 ? item.score / maxLex : 0);
+          }
+          const semanticMap = new Map<number, number>();
+          for (const item of semanticMatches) {
+            semanticMap.set(item.pid, item.score);
+          }
+          const merged = new Map<
+            number,
+            { pid: number; score: number; lexical?: number; semantic?: number }
+          >();
+          for (const [pid, score] of lexicalMap) {
+            merged.set(pid, { pid, score, lexical: score });
+          }
+          for (const [pid, score] of semanticMap) {
+            const entry = merged.get(pid);
+            if (entry) {
+              entry.semantic = score;
+            } else {
+              merged.set(pid, { pid, score, semantic: score });
+            }
+          }
+          const weighted = [...merged.values()].map((item) => {
+            const lex = item.lexical ?? 0;
+            const sem = item.semantic ?? 0;
+            const score = 0.6 * lex + 0.4 * sem;
+            return { ...item, score };
+          });
+          weighted.sort((a, b) => b.score - a.score);
+          const top = weighted.slice(0, 24);
+          const shaped = runSearch(trimmed, top, catalog, "hybrid").map((item) => {
+            const meta = merged.get(item.pid);
+            const hasLex = Boolean(meta?.lexical);
+            const hasSem = Boolean(meta?.semantic);
+            let why = item.why;
+            if (hasLex && hasSem) {
+              why = "Hybrid match: keyword + semantic similarity.";
+            } else if (hasSem) {
+              why = "Semantic similarity match.";
+            } else if (hasLex) {
+              why = item.matchedTokens.length
+                ? `Matched ${item.matchedTokens.slice(0, 3).join(", ")}.`
+                : "Matched catalog text.";
+            }
+            return { ...item, why };
+          });
+          setSearchResults(shaped);
+          setResultMode("hybrid");
+          setSearchMessage(
+            shaped.length > 0
+              ? `Showing ${shaped.length} hybrid matches.`
+              : "No matches yet. Try another query."
+          );
+          return;
+        }
         const matches = await workerClient.query(trimmed, 24);
-        const shaped = runSearch(trimmed, matches, catalog);
+        const shaped = runSearch(trimmed, matches, catalog, "lexical");
         setSearchResults(shaped);
+        setResultMode("lexical");
         setSearchMessage(
           shaped.length > 0
             ? `Showing ${shaped.length} matches.`
@@ -107,7 +332,16 @@ export default function App() {
         setSearchMessage(message);
       }
     },
-    [catalog, query, workerClient]
+    [
+      catalog,
+      query,
+      searchMode,
+      semanticDimension,
+      semanticModel,
+      semanticStatus,
+      semanticWorker,
+      workerClient,
+    ]
   );
 
   React.useEffect(() => {
@@ -125,6 +359,7 @@ export default function App() {
           setCatalogMessage("Import the catalog JSON to build your local index.");
           setIndexStatus("idle");
           setIndexMessage("Import a catalog to build the lexical index.");
+          setIndexProgress(null);
           return;
         }
         const parsed = parseCatalogJson(JSON.parse(text));
@@ -147,6 +382,7 @@ export default function App() {
         setCatalogMessage(message);
         setIndexStatus("error");
         setIndexMessage("Failed to load catalog. Index not built.");
+        setIndexProgress(null);
       }
     };
     loadCachedCatalog();
@@ -155,17 +391,86 @@ export default function App() {
     };
   }, [buildIndex]);
 
+  React.useEffect(() => {
+    let active = true;
+    const loadCachedEmbeddings = async () => {
+      setSemanticStatus("building");
+      setSemanticMessage("Checking stored embeddings...");
+      try {
+        const { text, backend } = await loadEmbeddingsText();
+        if (!active) {
+          return;
+        }
+        if (!text) {
+          setSemanticStatus("idle");
+          setSemanticMessage("Import embeddings to enable semantic search.");
+          return;
+        }
+        const parsed = parseEmbeddingsJson(JSON.parse(text));
+        const label =
+          backend === "none" ? "local storage unavailable" : backend.toUpperCase();
+        setSemanticMessage(
+          `Embeddings loaded (${parsed.items.length} vectors) from ${label}.`
+        );
+        await buildSemanticIndex(parsed.items, parsed.model);
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to load embeddings from storage.";
+        setSemanticStatus("error");
+        setSemanticMessage(message);
+      }
+    };
+    loadCachedEmbeddings();
+    return () => {
+      active = false;
+    };
+  }, [buildSemanticIndex]);
+
   const handleImportClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleImportEmbeddingsClick = () => {
+    embeddingsInputRef.current?.click();
   };
 
   const handleRefreshIndex = () => {
     if (catalog.length === 0) {
       setIndexStatus("idle");
       setIndexMessage("Import a catalog to build the lexical index.");
+      setIndexProgress(null);
       return;
     }
     void buildIndex(catalog);
+  };
+
+  const handleRestartWorker = () => {
+    setWorkerStatus("checking");
+    autoRestartedRef.current = false;
+    setWorkerKey((prev) => prev + 1);
+  };
+
+  const handleRefreshSemantic = () => {
+    if (semanticStatus !== "ready" || semanticCount === null) {
+      setSemanticStatus("idle");
+      setSemanticMessage("Import embeddings to enable semantic search.");
+      return;
+    }
+    void (async () => {
+      const { text } = await loadEmbeddingsText();
+      if (!text) {
+        setSemanticStatus("idle");
+        setSemanticMessage("Import embeddings to enable semantic search.");
+        return;
+      }
+      const parsed = parseEmbeddingsJson(JSON.parse(text));
+      await buildSemanticIndex(parsed.items, parsed.model);
+    })();
   };
 
   const handleFileChange = async (
@@ -200,6 +505,35 @@ export default function App() {
     }
   };
 
+  const handleEmbeddingsChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    setSemanticStatus("building");
+    setSemanticMessage(`Reading ${file.name}...`);
+    try {
+      const text = await file.text();
+      const parsed = parseEmbeddingsJson(JSON.parse(text));
+      const backend = await saveEmbeddingsText(text);
+      await buildSemanticIndex(parsed.items, parsed.model);
+      setSemanticMessage(
+        backend === "none"
+          ? `Embeddings loaded (${parsed.items.length} vectors). Local storage unavailable.`
+          : `Embeddings loaded (${parsed.items.length} vectors). Saved to ${backend.toUpperCase()}.`
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to parse embeddings JSON.";
+      setSemanticStatus("error");
+      setSemanticMessage(message);
+    } finally {
+      event.target.value = "";
+    }
+  };
+
   const statusLabel = (() => {
     switch (catalogStatus) {
       case "loading":
@@ -215,6 +549,12 @@ export default function App() {
 
   const statusTone =
     catalogStatus === "ready" ? "ready" : catalogStatus === "error" ? "error" : "";
+  const semanticTone =
+    semanticStatus === "ready"
+      ? "ready"
+      : semanticStatus === "error"
+      ? "error"
+      : "";
   const results = catalog.length > 0 ? catalog.slice(0, 4) : null;
   const catalogById = React.useMemo(() => {
     const map = new Map<number, CatalogProduct>();
@@ -333,6 +673,9 @@ export default function App() {
           <button className="ghost" onClick={handleImportClick}>
             Import catalog
           </button>
+          <button className="ghost" onClick={handleImportEmbeddingsClick}>
+            Import embeddings
+          </button>
           <button
             className="ghost"
             onClick={handleRefreshIndex}
@@ -384,20 +727,95 @@ export default function App() {
         <details className="hero-collapsible" open>
           <summary className="hero-summary">Index & Filters</summary>
           <section className="hero-split">
-            <div className="hero-panel">
-              <div className="panel-header">
-                <span>Index status</span>
-                <span className={`status-dot ${statusTone}`} />
-                <span className={`status-text ${statusTone}`}>{statusLabel}</span>
+            <div className="hero-stack">
+              <div className="hero-panel">
+                <div className="panel-header">
+                  <span>Lexical index</span>
+                  <span className={`status-dot ${statusTone}`} />
+                  <span className={`status-text ${statusTone}`}>{statusLabel}</span>
+                  <span
+                    className={`worker-dot ${workerStatus}`}
+                    title={`Worker ${workerStatus}`}
+                  />
+                  <span className="worker-text">
+                    {workerStatus === "online"
+                      ? "Worker online"
+                      : workerStatus === "offline"
+                      ? "Worker offline"
+                      : "Worker checking"}
+                  </span>
+                </div>
+                <div className="panel-body">
+                  <p>{catalogMessage}</p>
+                  <p className="muted">{indexMessage}</p>
+                  {indexStatus === "building" && indexProgress ? (
+                    <div className="progress">
+                      <div className="progress-track">
+                        <div
+                          className="progress-fill"
+                          style={{
+                            width: `${
+                              indexProgress.total > 0
+                                ? Math.min(
+                                    100,
+                                    Math.round(
+                                      (indexProgress.processed /
+                                        indexProgress.total) *
+                                        100
+                                    )
+                                  )
+                                : 0
+                            }%`,
+                          }}
+                        />
+                      </div>
+                      <div className="progress-text">
+                        {indexProgress.processed}/{indexProgress.total} indexed
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="panel-actions">
+                    <button className="primary" onClick={handleImportClick}>
+                      Import catalog
+                    </button>
+                    <button className="ghost" onClick={handleRefreshIndex}>
+                      Refresh index
+                    </button>
+                    <button className="ghost" onClick={handleRestartWorker}>
+                      Restart worker
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div className="panel-body">
-                <p>{catalogMessage}</p>
-                <p className="muted">{indexMessage}</p>
-                <div className="panel-actions">
-                  <button className="primary" onClick={handleImportClick}>
-                    Import catalog
-                  </button>
-                  <button className="ghost">Learn more</button>
+              <div className="hero-panel">
+                <div className="panel-header">
+                  <span>Semantic index</span>
+                  <span className={`status-dot ${semanticTone}`} />
+                  <span className={`status-text ${semanticTone}`}>
+                    {semanticStatus === "ready"
+                      ? "Ready"
+                      : semanticStatus === "building"
+                      ? "Building"
+                      : semanticStatus === "error"
+                      ? "Error"
+                      : "Not indexed"}
+                  </span>
+                </div>
+                <div className="panel-body">
+                  <p>{semanticMessage}</p>
+                  <p className="muted">
+                    {semanticModel
+                      ? `Model: ${semanticModel} · ${semanticDimension ?? "?"}d`
+                      : "Provide embeddings with model metadata to enable semantic search."}
+                  </p>
+                  <div className="panel-actions">
+                    <button className="primary" onClick={handleImportEmbeddingsClick}>
+                      Import embeddings
+                    </button>
+                    <button className="ghost" onClick={handleRefreshSemantic}>
+                      Refresh index
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -482,11 +900,33 @@ export default function App() {
                     : searchMessage}
                 </p>
               </div>
-              <div className="results-actions">
-                <button className="ghost">Sort: relevance</button>
-                <button className="ghost">Compare</button>
+                <div className="results-actions">
+                  <div className="mode-toggle">
+                    <button
+                      className={`ghost ${searchMode === "lexical" ? "active" : ""}`}
+                      onClick={() => setSearchMode("lexical")}
+                    >
+                      Keyword
+                    </button>
+                    <button
+                      className={`ghost ${searchMode === "hybrid" ? "active" : ""}`}
+                      onClick={() => setSearchMode("hybrid")}
+                      disabled={semanticStatus !== "ready"}
+                    >
+                      Hybrid
+                    </button>
+                    <button
+                      className={`ghost ${searchMode === "semantic" ? "active" : ""}`}
+                      onClick={() => setSearchMode("semantic")}
+                      disabled={semanticStatus !== "ready"}
+                    >
+                      Semantic
+                    </button>
+                  </div>
+                  <button className="ghost">Sort: relevance</button>
+                  <button className="ghost">Compare</button>
+                </div>
               </div>
-            </div>
 
             <div className="result-list">
               {filteredResults.map((item, index) => {
@@ -497,6 +937,10 @@ export default function App() {
                     ? `$${item.price.toFixed(2)}`
                     : "$--.--";
                 const rank = index + 1;
+                const scoreFill =
+                  resultMode === "semantic" || resultMode === "hybrid"
+                    ? Math.min(100, Math.max(8, item.score * 100))
+                    : Math.min(100, Math.max(12, item.score * 20));
                 return (
                   <article
                     key={item.pid}
@@ -523,10 +967,7 @@ export default function App() {
                       title={`Score ${item.score.toFixed(1)}`}
                       style={
                         {
-                          "--score-fill": `${Math.min(
-                            100,
-                            Math.max(12, item.score * 20)
-                          )}%`,
+                          "--score-fill": `${scoreFill}%`,
                         } as React.CSSProperties
                       }
                     />
@@ -653,6 +1094,13 @@ export default function App() {
         type="file"
         accept="application/json"
         onChange={handleFileChange}
+        hidden
+      />
+      <input
+        ref={embeddingsInputRef}
+        type="file"
+        accept="application/json"
+        onChange={handleEmbeddingsChange}
         hidden
       />
     </div>

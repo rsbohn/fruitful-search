@@ -19,11 +19,19 @@ export type LexicalIndexStats = {
 
 type WorkerRequest =
   | { id: number; type: "build"; catalog: CatalogIndexItem[] }
+  | { id: number; type: "build-init"; total: number }
+  | { id: number; type: "build-chunk"; catalog: CatalogIndexItem[] }
+  | { id: number; type: "build-finish" }
+  | { id: number; type: "ping" }
   | { id: number; type: "query"; query: string; limit?: number }
   | { id: number; type: "clear" };
 
 type WorkerResponse =
   | { id: number; type: "build-complete"; stats: LexicalIndexStats }
+  | { id: number; type: "build-progress"; processed: number; total: number }
+  | { id: number; type: "build-ack" }
+  | { id: number; type: "pong" }
+  | { id: number; type: "log"; message: string }
   | { id: number; type: "query-result"; results: { pid: number; score: number }[] }
   | { id: number; type: "cleared" }
   | { id: number; type: "error"; message: string };
@@ -43,7 +51,11 @@ export const createLexicalWorker = () => {
   let nextId = 1;
   const pending = new Map<
     number,
-    { resolve: (value: WorkerResponse) => void; reject: (error: Error) => void }
+    {
+      resolve: (value: WorkerResponse) => void;
+      reject: (error: Error) => void;
+      onProgress?: (processed: number, total: number) => void;
+    }
   >();
 
   const rejectAll = (error: Error) => {
@@ -55,8 +67,16 @@ export const createLexicalWorker = () => {
 
   worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     const message = event.data;
+    if (message.type === "log") {
+      console.log(message.message);
+      return;
+    }
     const request = pending.get(message.id);
     if (!request) {
+      return;
+    }
+    if (message.type === "build-progress") {
+      request.onProgress?.(message.processed, message.total);
       return;
     }
     pending.delete(message.id);
@@ -78,7 +98,8 @@ export const createLexicalWorker = () => {
 
   const send = (
     payload: Omit<WorkerRequest, "id">,
-    timeoutMs = 15000
+    timeoutMs = 15000,
+    onProgress?: (processed: number, total: number) => void
   ): Promise<WorkerResponse> => {
     const id = nextId++;
     return new Promise((resolve, reject) => {
@@ -98,20 +119,38 @@ export const createLexicalWorker = () => {
         window.clearTimeout(timer);
         reject(error);
       };
-      pending.set(id, { resolve: wrappedResolve, reject: wrappedReject });
+      pending.set(id, { resolve: wrappedResolve, reject: wrappedReject, onProgress });
     });
   };
 
   return {
-    buildIndex: async (catalog: CatalogProduct[]): Promise<LexicalIndexStats> => {
-      const message = await send(
-        { type: "build", catalog: toIndexItems(catalog) },
-        30000
-      );
-      if (message.type !== "build-complete") {
+    buildIndex: async (
+      catalog: CatalogProduct[],
+      onProgress?: (processed: number, total: number) => void
+    ): Promise<LexicalIndexStats> => {
+      const items = toIndexItems(catalog);
+      const total = items.length;
+      const init = await send({ type: "build-init", total }, 15000, onProgress);
+      if (init.type !== "build-ack") {
         throw new Error("Unexpected response from lexical index worker.");
       }
-      return message.stats;
+      const chunkSize = 400;
+      for (let i = 0; i < items.length; i += chunkSize) {
+        const chunk = items.slice(i, i + chunkSize);
+        const ack = await send(
+          { type: "build-chunk", catalog: chunk },
+          30000,
+          onProgress
+        );
+        if (ack.type !== "build-ack") {
+          throw new Error("Unexpected response from lexical index worker.");
+        }
+      }
+      const done = await send({ type: "build-finish" }, 30000, onProgress);
+      if (done.type !== "build-complete") {
+        throw new Error("Unexpected response from lexical index worker.");
+      }
+      return done.stats;
     },
     query: async (query: string, limit?: number) => {
       const message = await send({ type: "query", query, limit });
@@ -119,6 +158,12 @@ export const createLexicalWorker = () => {
         throw new Error("Unexpected response from lexical index worker.");
       }
       return message.results;
+    },
+    ping: async (timeoutMs = 2000) => {
+      const message = await send({ type: "ping" }, timeoutMs);
+      if (message.type !== "pong") {
+        throw new Error("Unexpected response from lexical index worker.");
+      }
     },
     clear: async () => {
       const message = await send({ type: "clear" });
