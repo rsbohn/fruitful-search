@@ -1,6 +1,6 @@
-{"id":"filters-001","title":"Filters and explainability in web UI","status":"done","type":"feature","priority":"high","created":"2026-02-06","updated":"2026-02-06"}
-{"id":"filters-010","title":"Show active filters summary + clear buttons","status":"done","type":"feature","priority":"med","created":"2026-02-06","depends_on":["filters-001"],"updated":"2026-02-06"}
-{"id":"filters-020","title":"Wire filters into search pipeline (in-stock + price range)","status":"done","type":"feature","priority":"high","created":"2026-02-06","depends_on":["filters-010"],"updated":"2026-02-06"}
-{"id":"filters-030","title":"Explainability: highlight matched terms in results","status":"done","type":"feature","priority":"med","created":"2026-02-06","depends_on":["filters-020"],"updated":"2026-02-06"}
-{"id":"filters-040","title":"Explainability: show 'why it matched' in details view","status":"done","type":"feature","priority":"low","created":"2026-02-06","depends_on":["filters-030"],"updated":"2026-02-06"}
-{"id":"filters-050","title":"Category lookup mapping in details view","status":"todo","type":"feature","priority":"low","created":"2026-02-06","depends_on":["filters-040"]}
+{"id": "filters-001", "title": "Filters and explainability in web UI", "status": "done", "type": "feature", "priority": "high", "created": "2026-02-06", "updated": "2026-02-06"}
+{"id": "filters-010", "title": "Show active filters summary + clear buttons", "status": "done", "type": "feature", "priority": "med", "created": "2026-02-06", "depends_on": ["filters-001"], "updated": "2026-02-06"}
+{"id": "filters-020", "title": "Wire filters into search pipeline (in-stock + price range)", "status": "done", "type": "feature", "priority": "high", "created": "2026-02-06", "depends_on": ["filters-010"], "updated": "2026-02-06"}
+{"id": "filters-030", "title": "Explainability: highlight matched terms in results", "status": "done", "type": "feature", "priority": "med", "created": "2026-02-06", "depends_on": ["filters-020"], "updated": "2026-02-06"}
+{"id": "filters-040", "title": "Explainability: show 'why it matched' in details view", "status": "done", "type": "feature", "priority": "low", "created": "2026-02-06", "depends_on": ["filters-030"], "updated": "2026-02-06"}
+{"id": "filters-050", "title": "Category lookup mapping in details view", "status": "done", "type": "feature", "priority": "low", "created": "2026-02-06", "depends_on": ["filters-040"], "updated": "2026-02-07"}
