@@ -1,1 +1,2 @@
 {"id": "default-001", "title": "Project summary view: list each epic as todo/in-progress/done", "status": "done", "type": "feature", "priority": "med", "created": "2026-02-06", "updated": "2026-02-06"}
+{"id": "default-002", "title": "Web app: show product ID in search results and details view", "status": "done", "type": "feature", "priority": "med", "created": "2026-02-08", "updated": "2026-02-08"}
