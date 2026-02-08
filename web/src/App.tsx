@@ -1259,6 +1259,7 @@ export default function App() {
                     <div className="result-meta">
                       <div className="result-meta-left">
                         <span className="rank-badge">#{rank}</span>
+                        <span className="result-tag">#{item.pid}</span>
                         <span className="result-tag">
                           {item.manufacturer ?? "Catalog"}
                         </span>
@@ -1319,6 +1320,10 @@ export default function App() {
                     {highlightText(selectedResult.why, selectedResult.matchedTokens)}
                   </p>
                   <div className="details-grid">
+                    <div>
+                      <div className="details-label">PID</div>
+                      <div className="details-value">{selectedResult.pid}</div>
+                    </div>
                     <div>
                       <div className="details-label">Price</div>
                       <div className="details-value">
